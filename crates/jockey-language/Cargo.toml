@@ -15,7 +15,7 @@ serde_json = { workspace = true }
 thiserror = { workspace = true }
 anyhow = { workspace = true }
 tracing = { workspace = true }
-pest = { workspace = true, features = ["serde"] }
+pest = { workspace = true }
 pest_derive = { workspace = true }
 ulid = { workspace = true }
 chrono = { workspace = true }
@@ -23,9 +23,6 @@ chrono = { workspace = true }
 # Crate-local dependencies
 jockey-core = { path = "../jockey-core" }
 jockey-evidence = { path = "../jockey-evidence" }
-
-[build-dependencies]
-pest_generator = { version = "2.7", features = ["serde"] }
 
 [dev-dependencies]
 proptest = { workspace = true }

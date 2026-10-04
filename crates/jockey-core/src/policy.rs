@@ -1,7 +1,8 @@
 //! JOCKY Core — Policy Engine Module
 
-use crate::contract::{ExecPolicy, TargetSpec, ContractError};
+use crate::contract::{ExecPolicy, ContractError};
 use crate::collector::CollectorManifest;
+use crate::TargetSpec;
 use std::collections::HashMap;
 
 /// Policy Engine
@@ -45,7 +46,7 @@ impl PolicyEngine {
         Ok(())
     }
     
-    fn validate_step(&self, step: &crate::contract::ExecStep, target: &crate::contract::TargetSpec) -> Result<(), crate::contract::ContractError> {
+    fn validate_step(&self, step: &crate::contract::ExecStep, target: &TargetSpec) -> Result<(), ContractError> {
         // Check collector exists
         let manifest = self.collector_manifests.get(&step.collector)
             .ok_or(crate::contract::ContractError::CollectorNotFound(step.collector.clone()))?;

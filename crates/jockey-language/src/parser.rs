@@ -203,28 +203,32 @@ fn parse_correlate(pair: pest::iterators::Pair<Rule>, span: Span) -> Result<Stat
             }
             Rule::correlate_params => {
                 for param in inner.into_inner() {
-                    if let Rule::window = param.as_rule() {
-                        for p in param.into_inner() {
-                            match p.as_rule() {
-                                Rule::integer => {
-                                    let value = p.as_str().parse().unwrap_or(0);
-                                    let unit = if let Some(u) = param.into_inner().next() {
-                                        match u.as_str() {
-                                            "s" => TimeUnit::Seconds,
-                                            "m" => TimeUnit::Minutes,
-                                            "h" => TimeUnit::Hours,
-                                            _ => TimeUnit::Seconds,
-                                        }
-                                    } else {
-                                        TimeUnit::Seconds
-                                    };
-                                    params.window = Some(Duration { value, unit });
+                    match param.as_rule() {
+                        Rule::window => {
+                            for p in param.into_inner() {
+                                match p.as_rule() {
+                                    Rule::integer => {
+                                        let value = p.as_str().parse().unwrap_or(0);
+                                        let unit = if let Some(u) = param.into_inner().next() {
+                                            match u.as_str() {
+                                                "s" => TimeUnit::Seconds,
+                                                "m" => TimeUnit::Minutes,
+                                                "h" => TimeUnit::Hours,
+                                                _ => TimeUnit::Seconds,
+                                            }
+                                        } else {
+                                            TimeUnit::Seconds
+                                        };
+                                        params.window = Some(Duration { value, unit });
+                                    }
+                                    _ => {}
                                 }
-                                _ => {}
                             }
                         }
+                        _ => {}
                     }
-            }
+                }
+            },
             _ => {}
         }
     }

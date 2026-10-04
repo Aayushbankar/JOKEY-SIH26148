@@ -33,6 +33,21 @@ impl IRMetadata {
             tags: Vec::new(),
         }
     }
+    
+    pub fn with_description(mut self, description: impl Into<String>) -> Self {
+        self.description = Some(description.into());
+        self
+    }
+    
+    pub fn with_author(mut self, author: impl Into<String>) -> Self {
+        self.author = Some(author.into());
+        self
+    }
+    
+    pub fn with_tags(mut self, tags: Vec<String>) -> Self {
+        self.tags = tags;
+        self
+    }
 }
 
 /// IR Step
@@ -77,17 +92,4 @@ pub struct IROutput {
     pub name: String,
     pub from_step: String,
     pub field: Option<String>,
-}
-
-/// IR Metadata builder
-impl IRMetadata {
-    pub fn new(name: impl Into<String>) -> Self {
-        Self {
-            name: name.into(),
-            description: None,
-            author: None,
-            created_at: chrono::Utc::now(),
-            tags: Vec::new(),
-        }
-    }
 }

@@ -22,13 +22,12 @@ chrono = { workspace = true }
 uuid = { workspace = true }
 petgraph = { workspace = true }
 rusqlite = { workspace = true }
-figment = { workspace = true }
-config = { workspace = true }
 clap = { workspace = true }
 blake3 = { workspace = true }
 ed25519-dalek = { workspace = true }
 rand = { workspace = true }
 zeroize = { workspace = true }
+config = { workspace = true }
 
 # Crate-local dependencies
 jockey-evidence = { path = "../jockey-evidence" }
