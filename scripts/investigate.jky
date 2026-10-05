@@ -1,0 +1,19 @@
+investigation "process-investigation-demo" {
+    hypothesis "Suspicious process execution detected" {
+        mitre: ["T1059", "T1059.001"]
+    }
+    
+    collect process as all_procs where name contains "svchost"
+    collect process as powershell_procs where name contains "powershell"
+    collect process as suspicious_procs where cmdline contains "encodedcommand"
+    
+    correlate all_procs -> powershell_procs by "pid_link" as proc_chain
+    correlate proc_chain -> suspicious_procs by "pid_link" as suspicious_chain
+    
+    timeline "process_timeline" from proc_chain, suspicious_chain
+    bind hypothesis "Suspicious process execution detected" to proc_chain, suspicious_chain
+    
+    export case "process-demo" format case_uco
+    export graph "process-graph" format cytoscape
+    export report "process-report" format markdown
+}

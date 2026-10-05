@@ -185,6 +185,7 @@ pub enum Capability {
     NetworkListen,
     NetworkCapture,
     NetworkResolve,
+    ConfigEnumerate,
 }
 
 /// Expression AST nodes
@@ -255,10 +256,19 @@ pub struct TypedAst {
 }
 
 /// Symbol table for type checking
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct SymbolTable {
     pub bindings: HashMap<String, BindingInfo>,
     pub hypotheses: HashMap<String, HypothesisInfo>,
+}
+
+impl SymbolTable {
+    pub fn new() -> Self {
+        Self {
+            bindings: HashMap::new(),
+            hypotheses: HashMap::new(),
+        }
+    }
 }
 
 /// Binding information in symbol table

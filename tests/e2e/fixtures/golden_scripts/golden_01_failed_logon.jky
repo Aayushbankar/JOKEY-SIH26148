@@ -1,0 +1,19 @@
+investigation "failed-logon-persistence" {
+    hypothesis "Brute force followed by Run key persistence" {
+        mitre: ["T1110", "T1547.001"]
+    }
+
+    collect process as logon_events where command_line contains "logon" and EventID == 4625
+    collect registry as run_keys where path matches "HKLM\\Software\\Microsoft\\Windows\\CurrentVersion\\Run*"
+    collect registry as run_keys_user where path matches "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run*"
+
+    correlate logon_events -> run_keys by "timestamp_join" window 300s as hk_anomaly
+    correlate logon_events -> run_keys_user by "timestamp_join" window 300s as hkcu_anomaly
+
+    timeline "logon_persistence" from hk_anomaly, hkcu_anomaly
+    bind hypothesis "Brute force followed by Run key persistence" to hk_anomaly, hkcu_anomaly
+
+    export case "logon-persist-case" format case_uco
+    export graph "logon-persist-graph" format cytoscape
+    export report "logon-persist-report" format markdown
+}

@@ -1,0 +1,19 @@
+investigation "scheduled-task-persistence" {
+    hypothesis "Persistence via scheduled task creation" {
+        mitre: ["T1053.005"]
+    }
+
+    collect logs as task_logs where source == "Microsoft-Windows-TaskScheduler/Operational" and EventID in [106, 140, 200, 201]
+    collect registry as task_reg where path matches "HKLM\\Software\\Microsoft\\Windows NT\\CurrentVersion\\Schedule\\TaskCache\\Tasks\\*"
+    collect process as task_procs where parent_name == "svchost.exe" and command_line contains "taskeng.exe"
+
+    correlate task_logs -> task_reg by "timestamp_join" window 60s as task_created
+    correlate task_created -> task_procs by "process_netlink" as task_exec
+
+    timeline "task_persistence" from task_created, task_exec
+    bind hypothesis "Persistence via scheduled task creation" to task_created, task_exec
+
+    export case "task-persist-case" format case_uco
+    export graph "task-persist-graph" format cytoscape
+    export report "task-persist-report" format markdown
+}

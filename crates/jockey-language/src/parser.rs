@@ -43,6 +43,10 @@ pub fn parse(source: &str) -> Result<AstModule, ParseError> {
                 name = inner.as_str().to_string();
                 span = pest_span_to_span(inner.as_span());
             }
+            Rule::string => {
+                name = unescape_string(inner.as_str());
+                span = pest_span_to_span(inner.as_span());
+            }
             Rule::statement => {
                 statements.push(parse_statement(inner)?);
             }
@@ -61,7 +65,7 @@ fn parse_statement(pair: pest::iterators::Pair<Rule>) -> Result<Statement, Parse
         Rule::hypothesis => parse_hypothesis(inner, span),
         Rule::collect => parse_collect(inner, span),
         Rule::filter => parse_filter(inner, span),
-        Rule::match_ => parse_match(inner, span),
+        Rule::r#match => parse_match(inner, span),
         Rule::correlate => parse_correlate(inner, span),
         Rule::timeline => parse_timeline(inner, span),
         Rule::bind => parse_bind(inner, span),
@@ -205,25 +209,25 @@ fn parse_correlate(pair: pest::iterators::Pair<Rule>, span: Span) -> Result<Stat
                 for param in inner.into_inner() {
                     match param.as_rule() {
                         Rule::window => {
+                            let mut value = 0;
+                            let mut unit = TimeUnit::Seconds;
                             for p in param.into_inner() {
                                 match p.as_rule() {
                                     Rule::integer => {
-                                        let value = p.as_str().parse().unwrap_or(0);
-                                        let unit = if let Some(u) = param.into_inner().next() {
-                                            match u.as_str() {
-                                                "s" => TimeUnit::Seconds,
-                                                "m" => TimeUnit::Minutes,
-                                                "h" => TimeUnit::Hours,
-                                                _ => TimeUnit::Seconds,
-                                            }
-                                        } else {
-                                            TimeUnit::Seconds
+                                        value = p.as_str().parse().unwrap_or(0);
+                                    }
+                                    Rule::time_unit => {
+                                        unit = match p.as_str() {
+                                            "s" => TimeUnit::Seconds,
+                                            "m" => TimeUnit::Minutes,
+                                            "h" => TimeUnit::Hours,
+                                            _ => TimeUnit::Seconds,
                                         };
-                                        params.window = Some(Duration { value, unit });
                                     }
                                     _ => {}
                                 }
                             }
+                            params.window = Some(Duration { value, unit });
                         }
                         _ => {}
                     }
@@ -255,6 +259,9 @@ fn parse_timeline(pair: pest::iterators::Pair<Rule>, span: Span) -> Result<State
                 } else {
                     sources.push(inner.as_str().to_string());
                 }
+            }
+            Rule::string => {
+                name = unescape_string(inner.as_str());
             }
             _ => {}
         }
@@ -303,6 +310,7 @@ fn parse_export(pair: pest::iterators::Pair<Rule>, span: Span) -> Result<Stateme
                 };
             }
             Rule::identifier => name = inner.as_str().to_string(),
+            Rule::string => name = unescape_string(inner.as_str()),
             Rule::format_spec => {
                 format = match inner.as_str() {
                     "case_uco" => ExportFormat::CaseUco,
@@ -357,7 +365,7 @@ fn parse_expression(pair: pest::iterators::Pair<Rule>) -> Result<Expression, Par
     }
     
     if comparisons.len() == 1 && operators.is_empty() {
-        return Ok(comparisons[0]);
+        return Ok(comparisons.remove(0));
     }
     
     // Build binary expression tree
@@ -377,7 +385,7 @@ fn parse_expression(pair: pest::iterators::Pair<Rule>) -> Result<Expression, Par
 fn parse_comparison(pair: pest::iterators::Pair<Rule>) -> Result<Expression, ParseError> {
     let mut left = String::new();
     let mut op = BinaryOp::Eq;
-    let mut right = None;
+    let mut right: Option<Expression> = None;
     
     for inner in pair.into_inner() {
         match inner.as_rule() {
@@ -403,7 +411,7 @@ fn parse_comparison(pair: pest::iterators::Pair<Rule>) -> Result<Expression, Par
                 };
             }
             Rule::value => {
-                right = Some(parse_value(inner)?);
+                right = Some(Expression::Literal(parse_value(inner)?));
             }
             Rule::array => {
                 let mut arr = Vec::new();

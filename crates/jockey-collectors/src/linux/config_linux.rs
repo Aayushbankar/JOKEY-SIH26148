@@ -1,9 +1,10 @@
-//! Linux Config Collector — Stub Implementation
+//! Linux Configuration Collector — Stub Implementation
 
 use async_trait::async_trait;
-use crate::trait_def::{Collector, CollectorOutput, ExecutionContext, CollectorError, CollectorMetrics, ArtifactRef};
+use crate::trait_def::{Collector, CollectorOutput, ExecutionContext, CollectorError};
 use serde_json::Value;
 
+/// Linux Configuration Collector
 pub struct ConfigLinuxCollector;
 
 #[async_trait]
@@ -17,7 +18,7 @@ impl Collector for ConfigLinuxCollector {
     }
 
     fn supported_actions(&self) -> Vec<&'static str> {
-        vec!["enumerate", "get", "systemd", "journald"]
+        vec!["enumerate", "get_config", "systemd", "cron"]
     }
 
     fn supported_os(&self) -> Vec<&'static str> {
@@ -27,11 +28,11 @@ impl Collector for ConfigLinuxCollector {
     async fn execute(
         &self,
         action: &str,
-        _params: serde_json::Value,
+        _params: Value,
         _context: &ExecutionContext,
-    ) -> Result<CollectorOutput, crate::trait_def::CollectorError> {
+    ) -> Result<CollectorOutput, CollectorError> {
         match action {
-            _ => Err(crate::trait_def::CollectorError::UnsupportedAction(format!("config_linux action {} not implemented", action)))
+            _ => Err(CollectorError::UnsupportedAction(format!("config_linux action {} not implemented", action)))
         }
     }
 }

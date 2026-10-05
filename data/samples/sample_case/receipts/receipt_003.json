@@ -1,0 +1,18 @@
+{
+  "id": "01HY876543210ABCDEF1234572",
+  "evidence_id": "01HY876543210ABCDEF1234569",
+  "run_id": "01HY876543210ABCDEF1234567",
+  "collector": "file_linux",
+  "collector_version": "0.1.0",
+  "signature": "c3d4e5f6789012345678901234567890abcdef1234567890abcdef1234567890abcdef12345678901234567890abcdef1234567890abcdef1234567890",
+  "public_key": "a1b2c3d4e5f6789012345678901234567890abcdef1234567890abcdef1234567890",
+  "payload_hash": "c3d4e5f6789012345678901234567890abcdef1234567890abcdef1234567890ab",
+  "payload_hash_algo": "sha256",
+  "timestamp": "2026-10-05T12:00:10Z",
+  "host_info": {
+    "hostname": "test-host",
+    "os": "linux",
+    "kernel": "6.1.0",
+    "collector_pid": 1234
+  }
+}

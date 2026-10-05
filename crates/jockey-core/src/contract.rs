@@ -24,6 +24,8 @@ pub struct ExecStep {
     pub action: String,
     pub params: serde_json::Value,
     pub output_vars: Vec<String>,
+    #[serde(default)]
+    pub depends_on: Vec<String>,
     pub timeout_ms: u64,
     pub retry: RetryPolicy,
 }
@@ -182,6 +184,7 @@ fn resolve_step(step: &crate::ir::IRStep) -> Result<ExecStep, ContractError> {
         action: step.action.clone(),
         params: step.params.clone(),
         output_vars: step.binds.clone(),
+        depends_on: step.depends_on.clone(),
         timeout_ms: 30000,
         retry: Default::default(),
     })

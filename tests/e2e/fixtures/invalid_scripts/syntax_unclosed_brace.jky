@@ -1,0 +1,2 @@
+investigation "broken-syntax" {
+    collect process as p

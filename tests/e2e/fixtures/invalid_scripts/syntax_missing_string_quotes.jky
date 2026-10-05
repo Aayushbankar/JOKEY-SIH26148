@@ -1,0 +1,3 @@
+investigation unquoted_name {
+    collect process as procs
+}

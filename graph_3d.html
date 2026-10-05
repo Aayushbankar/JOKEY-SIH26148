@@ -1,0 +1,720 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JOCKY Investigation Graph — 3D Visualization</title>
+    <style>
+        body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0a0a0f; color: #e0e0e0; overflow: hidden; }
+        #canvas-container { width: 100vw; height: 100vh; position: relative; }
+        #ui { position: absolute; top: 20px; left: 20px; z-index: 100; background: rgba(10,10,15,0.9); padding: 20px; border-radius: 8px; border: 1px solid #333; max-width: 300px; }
+        #ui h1 { margin: 0 0 10px; font-size: 18px; color: #00d4aa; }
+        #ui .stats { font-size: 13px; line-height: 1.6; }
+        #ui .legend { margin-top: 15px; }
+        #ui .legend-item { display: flex; align-items: center; gap: 8px; margin: 4px 0; font-size: 12px; }
+        #ui .legend-color { width: 16px; height: 16px; border-radius: 3px; }
+        #controls { position: absolute; bottom: 20px; left: 20px; z-index: 100; background: rgba(10,10,15,0.9); padding: 15px; border-radius: 8px; border: 1px solid #333; display: flex; gap: 10px; flex-wrap: wrap; }
+        button { background: #1a1a2e; color: #00d4aa; border: 1px solid #00d4aa; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-family: inherit; transition: all 0.2s; }
+        button:hover { background: #00d4aa; color: #0a0a0f; }
+        select { background: #1a1a2e; color: #e0e0e0; border: 1px solid #333; padding: 8px 12px; border-radius: 4px; }
+        #info-panel { position: absolute; top: 20px; right: 20px; z-index: 100; background: rgba(10,10,15,0.9); padding: 20px; border-radius: 8px; border: 1px solid #333; max-width: 350px; display: none; }
+        #info-panel.visible { display: block; animation: fadeIn 0.2s; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+        .info-field { margin: 8px 0; }
+        .info-label { font-size: 11px; color: #888; text-transform: uppercase; }
+        .info-value { font-family: monospace; font-size: 12px; word-break: break-all; }
+        .edge-info { border-top: 1px solid #333; margin-top: 10px; padding-top: 10px; }
+    </style>
+</head>
+<body>
+    <div id="canvas-container"></div>
+    
+    <div id="ui">
+        <h1>JOCKY Investigation Graph</h1>
+        <div class="stats">
+            <span id="node-count">Nodes: 0</span> | 
+            <span id="edge-count">Edges: 0</span>
+        </div>
+        <div class="legend">
+            <div class="legend-item"><div class="legend-color" style="background:#e74c3c"></div>Process</div>
+            <div class="legend-item"><div class="legend-color" style="background:#3498db"></div>File</div>
+            <div class="legend-item"><div class="legend-color" style="background:#f39c12"></div>Registry</div>
+            <div class="legend-item"><div class="legend-color" style="background:#2ecc71"></div>Network</div>
+            <div class="legend-item"><div class="legend-color" style="background:#9b59b6"></div>Log</div>
+        </div>
+    </div>
+
+    <div id="controls">
+        <select id="layout-select">
+            <option value="cose3d">COSE 3D (Force-directed)</option>
+            <option value="sphere">Sphere</option>
+            <option value="grid">Grid</option>
+            <option value="circle">Circle</option>
+        </select>
+        <button id="btn-reset">Reset View</button>
+        <button id="btn-animate">Toggle Animation</button>
+        <button id="btn-export">Export PNG</button>
+    </div>
+
+    <div id="info-panel">
+        <h3 id="info-title">Element Details</h3>
+        <div id="info-content"></div>
+    </div>
+
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+            "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+        }
+    }
+    </script>
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
+        import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+        import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+        import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+        import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+        import { FXAAShader } from 'three/addons/shaders/FXAAShader.js';
+
+        // Color mapping for evidence types
+        const TYPE_COLORS = {
+            'process': 0xe74c3c,
+            'file': 0x3498db,
+            'registry': 0xf39c12,
+            'network': 0x2ecc71,
+            'log': 0x9b59b6,
+            'config': 0xf39c12,
+            'default': 0x888888
+        };
+
+        // Sample graph data (in production, load from ./target/release/jockey graph show --format cytoscape)
+        const graphData = {
+            "nodes": [
+                { "data": { "id": "ev-001", "label": "svchost.exe (PID 1024)", "type": "process", "timestamp": "2026-10-04T12:00:00Z", "metadata": {"pid": 1024, "ppid": 600, "cmdline": "/usr/sbin/svchost -k netsvcs"} } },
+                { "data": { "id": "ev-002", "label": "powershell.exe (PID 2048)", "type": "process", "timestamp": "2026-10-04T12:00:05Z", "metadata": {"pid": 2048, "ppid": 1024, "cmdline": "powershell.exe -enc aW52b2tlLW1pbWlrYXR6"} } },
+                { "data": { "id": "ev-003", "label": "updater.bin", "type": "file", "timestamp": "2026-10-04T12:00:10Z", "metadata": {"path": "/tmp/updater.bin", "permissions": "0755"} } }
+            ],
+            "edges": [
+                { "data": { "id": "edge-0", "source": "ev-001", "target": "ev-002", "relation": "pid_link", "confidence": 0.90, "method": "pid_link", "details": {"parent_pid": 1024, "child_pid": 2048} } },
+                { "data": { "id": "edge-1", "source": "ev-001", "target": "ev-002", "relation": "temporal_adjacent", "confidence": 0.80, "method": "temporal_adjacent", "details": {"time_diff_seconds": 5} } }
+            ]
+        };
+
+        // Scene setup
+        const container = document.getElementById('canvas-container');
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x0a0a0f);
+
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 10000);
+        camera.position.set(0, 0, 150);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        renderer.toneMappingExposure = 1.2;
+        container.appendChild(renderer.domElement);
+
+        // Post-processing
+        const composer = new EffectComposer(renderer);
+        composer.addPass(new RenderPass(scene, camera));
+        
+        const bloomPass = new UnrealBloomPass(
+            new THREE.Vector2(window.innerWidth, window.innerHeight),
+            0.8, 0.4, 0.85
+        );
+        composer.addPass(bloomPass);
+
+        const fxaaPass = new ShaderPass(FXAAShader);
+        fxaaPass.material.uniforms['resolution'].value.set(1/window.innerWidth, 1/window.innerHeight);
+        composer.addPass(fxaaPass);
+
+        // Controls
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+        controls.enablePan = true;
+        controls.minDistance = 10;
+        controls.maxDistance = 500;
+
+        // CSS2D Renderer for labels
+        const labelRenderer = new CSS2DRenderer();
+        labelRenderer.setSize(window.innerWidth, window.innerHeight);
+        labelRenderer.domElement.style.position = 'absolute';
+        labelRenderer.domElement.style.top = '0';
+        labelRenderer.domElement.style.pointerEvents = 'none';
+        container.appendChild(labelRenderer.domElement);
+
+        // Data structures
+        const nodeMeshes = new Map();
+        const edgeMeshes = new Map();
+        const nodeLabels = new Map();
+        const nodeDataMap = new Map();
+
+        // Particle system for ambient atmosphere
+        const particlesGeometry = new THREE.BufferGeometry();
+        const particleCount = 2000;
+        const positions = new Float32Array(particleCount * 3);
+        const colors = new Float32Array(particleCount * 3);
+        const sizes = new Float32Array(particleCount);
+        
+        for (let i = 0; i < particleCount; i++) {
+            const radius = 200 + Math.random() * 300;
+            const theta = Math.random() * Math.PI * 2;
+            const phi = Math.acos(2 * Math.random() - 1);
+            
+            positions[i * 3] = radius * Math.sin(phi) * Math.cos(theta);
+            positions[i * 3 + 1] = radius * Math.sin(phi) * Math.sin(theta);
+            positions[i * 3 + 2] = radius * Math.cos(phi);
+            
+            const color = new THREE.Color().setHSL(0.55 + Math.random() * 0.1, 0.8, 0.3 + Math.random() * 0.2);
+            colors[i * 3] = color.r;
+            colors[i * 3 + 1] = color.g;
+            colors[i * 3 + 2] = color.b;
+            
+            sizes[i] = 0.5 + Math.random() * 1.5;
+        }
+        
+        particlesGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        particlesGeometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+        particlesGeometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+        
+        const particlesMaterial = new THREE.PointsMaterial({
+            size: 1,
+            vertexColors: true,
+            transparent: true,
+            opacity: 0.4,
+            sizeAttenuation: true
+        });
+        
+        const particles = new THREE.Points(particlesGeometry, particlesMaterial);
+        scene.add(particles);
+
+        // Grid helper
+        const gridHelper = new THREE.GridHelper(400, 40, 0x1a1a3e, 0x0a0a1e);
+        gridHelper.position.y = -100;
+        scene.add(gridHelper);
+
+        // Create node geometry
+        function createNodeMesh(nodeData) {
+            const color = TYPE_COLORS[nodeData.type] || TYPE_COLORS.default;
+            const geometry = new THREE.SphereGeometry(3, 32, 32);
+            const material = new THREE.MeshPhysicalMaterial({
+                color: color,
+                metalness: 0.3,
+                roughness: 0.4,
+                clearcoat: 0.5,
+                clearcoatRoughness: 0.2,
+                emissive: new THREE.Color(color).multiplyScalar(0.2),
+                transmission: 0.1,
+                thickness: 0.5
+            });
+            
+            const mesh = new THREE.Mesh(geometry, material);
+            mesh.userData = { nodeId: nodeData.id, nodeData };
+            
+            // Glow effect
+            const glowGeometry = new THREE.SphereGeometry(3.5, 16, 16);
+            const glowMaterial = new THREE.MeshBasicMaterial({
+                color: color,
+                transparent: true,
+                opacity: 0.15,
+                side: THREE.BackSide
+            });
+            const glowMesh = new THREE.Mesh(glowGeometry, glowMaterial);
+            mesh.add(glowMesh);
+            mesh.userData.glowMesh = glowMesh;
+            
+            return mesh;
+        }
+
+        // Create edge geometry (curved tubes)
+        function createEdgeMesh(sourcePos, targetPos, edgeData) {
+            const curve = new THREE.QuadraticBezierCurve3(
+                sourcePos.clone(),
+                new THREE.Vector3().addVectors(sourcePos, targetPos).multiplyScalar(0.5).add(new THREE.Vector3(0, 15, 0)),
+                targetPos.clone()
+            );
+            
+            const points = curve.getPoints(50);
+            const geometry = new THREE.TubeGeometry(
+                new THREE.CatmullRomCurve3(points),
+                50,
+                0.15,
+                8,
+                false
+            );
+            
+            const confidence = edgeData.confidence || 0.5;
+            const color = new THREE.Color().setHSL(0.33 + confidence * 0.33, 0.8, 0.5);
+            
+            const material = new THREE.MeshPhysicalMaterial({
+                color: color,
+                metalness: 0.2,
+                roughness: 0.6,
+                transparent: true,
+                opacity: 0.6 + confidence * 0.3,
+                emissive: color.clone().multiplyScalar(0.1)
+            });
+            
+            const mesh = new THREE.Mesh(geometry, material);
+            mesh.userData = { edgeId: edgeData.id, edgeData };
+            return mesh;
+        }
+
+        // Create label
+        function createLabel(nodeData) {
+            const div = document.createElement('div');
+            div.className = 'node-label';
+            div.style.cssText = `
+                background: rgba(10,10,15,0.9);
+                border: 1px solid ${new THREE.Color(TYPE_COLORS[nodeData.type] || TYPE_COLORS.default).getStyle()};
+                border-radius: 4px;
+                padding: 4px 8px;
+                font-size: 11px;
+                color: #e0e0e0;
+                white-space: nowrap;
+                pointer-events: none;
+                box-shadow: 0 2px 8px rgba(0,0,0,0.5);
+            `;
+            div.textContent = nodeData.label || nodeData.id;
+            return div;
+        }
+
+        // Load graph data
+        function loadGraph(data) {
+            // Clear existing
+            nodeMeshes.forEach((mesh, id) => {
+                scene.remove(mesh);
+                if (mesh.userData.glowMesh) mesh.remove(mesh.userData.glowMesh);
+                mesh.geometry.dispose();
+                mesh.material.dispose();
+            });
+            edgeMeshes.forEach((mesh, id) => {
+                scene.remove(mesh);
+                mesh.geometry.dispose();
+                mesh.material.dispose();
+            });
+            nodeLabels.forEach((label, id) => {
+                labelRenderer.domElement.removeChild(label.element);
+            });
+            
+            nodeMeshes.clear();
+            edgeMeshes.clear();
+            nodeLabels.clear();
+            nodeDataMap.clear();
+
+            // Create node lookup
+            const nodeMap = new Map();
+            data.nodes.forEach(n => nodeMap.set(n.data.id, n.data));
+
+            // Create nodes
+            const nodeGroup = new THREE.Group();
+            data.nodes.forEach((n, i) => {
+                const nodeData = n.data;
+                const mesh = createNodeMesh(nodeData);
+                
+                // Initial positions in a sphere
+                const phi = Math.acos(-1 + (2 * i) / data.nodes.length);
+                const theta = Math.sqrt(data.nodes.length * Math.PI) * phi;
+                const radius = 40;
+                
+                mesh.position.set(
+                    radius * Math.sin(phi) * Math.cos(theta),
+                    radius * Math.sin(phi) * Math.sin(theta),
+                    radius * Math.cos(phi)
+                );
+                
+                mesh.userData.originalPosition = mesh.position.clone();
+                mesh.userData.index = i;
+                
+                scene.add(mesh);
+                nodeMeshes.set(n.data.id, mesh);
+                nodeDataMap.set(n.data.id, nodeData);
+
+                // Label
+                const labelDiv = createLabel(nodeData);
+                const label = new CSS2DObject(labelDiv);
+                label.position.set(0, 5, 0);
+                mesh.add(label);
+                nodeLabels.set(n.data.id, label);
+            });
+
+            // Create edges
+            data.edges.forEach(e => {
+                const sourceNode = nodeMeshes.get(e.data.source);
+                const targetNode = nodeMeshes.get(e.data.target);
+                
+                if (sourceNode && targetNode) {
+                    const mesh = createEdgeMesh(sourceNode.position, targetNode.position, e.data);
+                    scene.add(mesh);
+                    edgeMeshes.set(e.data.id, mesh);
+                    mesh.userData.sourceNode = sourceNode;
+                    mesh.userData.targetNode = targetNode;
+                }
+            });
+
+            // Update UI
+            document.getElementById('node-count').textContent = `Nodes: ${data.nodes.length}`;
+            document.getElementById('edge-count').textContent = `Edges: ${data.edges.length}`;
+
+            // Apply layout
+            applyLayout(document.getElementById('layout-select').value);
+        }
+
+        // Layout algorithms
+        function applyLayout(layoutName) {
+            const nodes = Array.from(nodeMeshes.values());
+            const nodeCount = nodes.length;
+            
+            switch (layoutName) {
+                case 'sphere':
+                    nodes.forEach((mesh, i) => {
+                        const phi = Math.acos(-1 + (2 * i) / nodeCount);
+                        const theta = Math.sqrt(nodeCount * Math.PI) * phi;
+                        const radius = 60;
+                        const targetPos = new THREE.Vector3(
+                            radius * Math.sin(phi) * Math.cos(theta),
+                            radius * Math.sin(phi) * Math.sin(theta),
+                            radius * Math.cos(phi)
+                        );
+                        animateToPosition(mesh, targetPos);
+                    });
+                    break;
+                    
+                case 'grid':
+                    const cols = Math.ceil(Math.sqrt(nodeCount));
+                    const spacing = 20;
+                    nodes.forEach((mesh, i) => {
+                        const row = Math.floor(i / cols);
+                        const col = i % cols;
+                        const targetPos = new THREE.Vector3(
+                            (col - (cols - 1) / 2) * spacing,
+                            (row - (cols - 1) / 2) * spacing * 0.5,
+                            Math.sin(i) * 10
+                        );
+                        animateToPosition(mesh, targetPos);
+                    });
+                    break;
+                    
+                case 'circle':
+                    nodes.forEach((mesh, i) => {
+                        const angle = (i / nodeCount) * Math.PI * 2;
+                        const radius = 60;
+                        const targetPos = new THREE.Vector3(
+                            radius * Math.cos(angle),
+                            radius * Math.sin(angle),
+                            Math.sin(i * 0.5) * 15
+                        );
+                        animateToPosition(mesh, targetPos);
+                    });
+                    break;
+                    
+                case 'cose3d':
+                default:
+                    // Force-directed layout simulation
+                    runForceDirected();
+                    break;
+            }
+        }
+
+        function animateToPosition(mesh, targetPos, duration = 1500) {
+            const startPos = mesh.position.clone();
+            const startTime = Date.now();
+            
+            function animate() {
+                const elapsed = Date.now() - startTime;
+                const progress = Math.min(elapsed / duration, 1);
+                const eased = 1 - Math.pow(1 - progress, 3); // easeOutCubic
+                
+                mesh.position.lerpVectors(startPos, targetPos, eased);
+                
+                // Update connected edges
+                edgeMeshes.forEach(edgeMesh => {
+                    if (edgeMesh.userData.sourceNode === mesh || edgeMesh.userData.targetNode === mesh) {
+                        updateEdgeGeometry(edgeMesh);
+                    }
+                });
+                
+                if (progress < 1) {
+                    requestAnimationFrame(animate);
+                }
+            }
+            animate();
+        }
+
+        function updateEdgeGeometry(edgeMesh) {
+            const sourcePos = edgeMesh.userData.sourceNode.position;
+            const targetPos = edgeMesh.userData.targetNode.position;
+            
+            const curve = new THREE.QuadraticBezierCurve3(
+                sourcePos.clone(),
+                new THREE.Vector3().addVectors(sourcePos, targetPos).multiplyScalar(0.5).add(new THREE.Vector3(0, 15, 0)),
+                targetPos.clone()
+            );
+            
+            const points = curve.getPoints(50);
+            const newGeometry = new THREE.TubeGeometry(
+                new THREE.CatmullRomCurve3(points),
+                50,
+                0.15,
+                8,
+                false
+            );
+            
+            edgeMesh.geometry.dispose();
+            edgeMesh.geometry = newGeometry;
+        }
+
+        // Force-directed layout (simplified)
+        function runForceDirected(iterations = 100) {
+            const nodes = Array.from(nodeMeshes.values());
+            const k = 80; // ideal distance
+            const repulsion = 2000;
+            const attraction = 0.05;
+            
+            for (let iter = 0; iter < iterations; iter++) {
+                // Repulsion
+                for (let i = 0; i < nodes.length; i++) {
+                    for (let j = i + 1; j < nodes.length; j++) {
+                        const diff = new THREE.Vector3().subVectors(nodes[i].position, nodes[j].position);
+                        const dist = diff.length();
+                        if (dist > 0 && dist < 100) {
+                            const force = diff.clone().normalize().multiplyScalar(repulsion / (dist * dist));
+                            nodes[i].position.add(force.multiplyScalar(0.1));
+                            nodes[j].position.sub(force.multiplyScalar(0.1));
+                        }
+                    }
+                }
+                
+                // Attraction (edges)
+                edgeMeshes.forEach(edgeMesh => {
+                    const source = edgeMesh.userData.sourceNode;
+                    const target = edgeMesh.userData.targetNode;
+                    if (source && target) {
+                        const diff = new THREE.Vector3().subVectors(target.position, source.position);
+                        const dist = diff.length();
+                        if (dist > k) {
+                            const force = diff.clone().normalize().multiplyScalar((dist - k) * attraction);
+                            source.position.add(force.multiplyScalar(0.1));
+                            target.position.sub(force.multiplyScalar(0.1));
+                        }
+                    }
+                });
+                
+                // Center gravity
+                nodes.forEach(mesh => {
+                    const centerForce = mesh.position.clone().negate().multiplyScalar(0.001);
+                    mesh.position.add(centerForce);
+                });
+            }
+            
+            // Update edges after layout
+            edgeMeshes.forEach(updateEdgeGeometry);
+        }
+
+        // Raycasting for interaction
+        const raycaster = new THREE.Raycaster();
+        const mouse = new THREE.Vector2();
+        let selectedMesh = null;
+        let animationEnabled = true;
+
+        function onMouseMove(event) {
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+        }
+
+        function onClick(event) {
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+            
+            raycaster.setFromCamera(mouse, camera);
+            const meshes = Array.from(nodeMeshes.values());
+            const intersects = raycaster.intersectObjects(meshes);
+            
+            if (intersects.length > 0) {
+                const mesh = intersects[0].object;
+                showInfoPanel(mesh.userData.nodeData, 'node');
+                highlightNode(mesh);
+            } else {
+                // Check edges
+                const edgeObjects = Array.from(edgeMeshes.values());
+                const edgeIntersects = raycaster.intersectObjects(edgeObjects);
+                if (edgeIntersects.length > 0) {
+                    const mesh = edgeIntersects[0].object;
+                    showInfoPanel(mesh.userData.edgeData, 'edge');
+                    highlightEdge(mesh);
+                } else {
+                    hideInfoPanel();
+                    clearHighlights();
+                }
+            }
+        }
+
+        function highlightNode(mesh) {
+            clearHighlights();
+            selectedMesh = mesh;
+            mesh.material.emissive.setHex(TYPE_COLORS[mesh.userData.nodeData.type] || 0xffffff);
+            mesh.material.emissiveIntensity = 0.8;
+            if (mesh.userData.glowMesh) {
+                mesh.userData.glowMesh.material.opacity = 0.4;
+            }
+        }
+
+        function highlightEdge(mesh) {
+            clearHighlights();
+            selectedMesh = mesh;
+            mesh.material.opacity = 1.0;
+            mesh.material.emissiveIntensity = 0.5;
+        }
+
+        function clearHighlights() {
+            if (selectedMesh) {
+                if (selectedMesh.userData.nodeData) {
+                    selectedMesh.material.emissiveIntensity = 0.2;
+                    if (selectedMesh.userData.glowMesh) {
+                        selectedMesh.userData.glowMesh.material.opacity = 0.15;
+                    }
+                } else {
+                    selectedMesh.material.opacity = 0.6 + (selectedMesh.userData.edgeData?.confidence || 0.5) * 0.3;
+                    selectedMesh.material.emissiveIntensity = 0.1;
+                }
+                selectedMesh = null;
+            }
+        }
+
+        function showInfoPanel(data, type) {
+            const panel = document.getElementById('info-panel');
+            const content = document.getElementById('info-content');
+            const title = document.getElementById('info-title');
+            
+            if (type === 'node') {
+                title.textContent = `Evidence: ${data.label}`;
+                content.innerHTML = `
+                    <div class="info-field">
+                        <div class="info-label">ID</div>
+                        <div class="info-value">${data.id}</div>
+                    </div>
+                    <div class="info-field">
+                        <div class="info-label">Type</div>
+                        <div class="info-value">${data.type}</div>
+                    </div>
+                    <div class="info-field">
+                        <div class="info-label">Timestamp</div>
+                        <div class="info-value">${data.timestamp}</div>
+                    </div>
+                    <div class="info-field">
+                        <div class="info-label">Metadata</div>
+                        <div class="info-value">${JSON.stringify(data.metadata, null, 2)}</div>
+                    </div>
+                `;
+            } else {
+                title.textContent = `Correlation: ${data.relation}`;
+                content.innerHTML = `
+                    <div class="info-field">
+                        <div class="info-label">ID</div>
+                        <div class="info-value">${data.id}</div>
+                    </div>
+                    <div class="info-field">
+                        <div class="info-label">Relation</div>
+                        <div class="info-value">${data.relation}</div>
+                    </div>
+                    <div class="info-field">
+                        <div class="info-label">Confidence</div>
+                        <div class="info-value">${(data.confidence * 100).toFixed(1)}%</div>
+                    </div>
+                    <div class="info-field">
+                        <div class="info-label">Method</div>
+                        <div class="info-value">${data.method}</div>
+                    </div>
+                    <div class="info-field edge-info">
+                        <div class="info-label">Details</div>
+                        <div class="info-value">${JSON.stringify(data.details, null, 2)}</div>
+                    </div>
+                `;
+            }
+            
+            panel.classList.add('visible');
+        }
+
+        function hideInfoPanel() {
+            document.getElementById('info-panel').classList.remove('visible');
+        }
+
+        // Animation loop
+        let time = 0;
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            if (animationEnabled) {
+                time += 0.005;
+                
+                // Rotate particles
+                particles.rotation.y += 0.0001;
+                particles.rotation.x += 0.00005;
+                
+                // Pulse glow on nodes
+                nodeMeshes.forEach(mesh => {
+                    if (mesh.userData.glowMesh) {
+                        const scale = 1 + Math.sin(time * 2 + mesh.userData.index) * 0.05;
+                        mesh.userData.glowMesh.scale.setScalar(scale);
+                    }
+                });
+                
+                // Pulse edges
+                edgeMeshes.forEach(mesh => {
+                    const opacity = 0.6 + (mesh.userData.edgeData.confidence || 0.5) * 0.3 + Math.sin(time * 3) * 0.1;
+                    mesh.material.opacity = opacity;
+                });
+            }
+            
+            controls.update();
+            composer.render();
+            labelRenderer.render(scene, camera);
+        }
+
+        // Event listeners
+        window.addEventListener('mousemove', onMouseMove);
+        window.addEventListener('click', onClick);
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            composer.setSize(window.innerWidth, window.innerHeight);
+            labelRenderer.setSize(window.innerWidth, window.innerHeight);
+            fxaaPass.material.uniforms['resolution'].value.set(1/window.innerWidth, 1/window.innerHeight);
+        });
+
+        document.getElementById('layout-select').addEventListener('change', (e) => {
+            applyLayout(e.target.value);
+        });
+
+        document.getElementById('btn-reset').addEventListener('click', () => {
+            controls.reset();
+            camera.position.set(0, 0, 150);
+        });
+
+        document.getElementById('btn-animate').addEventListener('click', () => {
+            animationEnabled = !animationEnabled;
+            document.getElementById('btn-animate').textContent = animationEnabled ? 'Pause Animation' : 'Resume Animation';
+        });
+
+        document.getElementById('btn-export').addEventListener('click', () => {
+            const link = document.createElement('a');
+            link.download = 'jockey-graph.png';
+            link.href = renderer.domElement.toDataURL('image/png');
+            link.click();
+        });
+
+        // Load graph
+        loadGraph(graphData);
+        animate();
+
+        // Expose for debugging
+        window.jockeyGraph = { scene, camera, nodeMeshes, edgeMeshes, loadGraph, applyLayout };
+    </script>
+</body>
+</html>

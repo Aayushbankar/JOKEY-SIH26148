@@ -1,196 +1,111 @@
 //! JOCKY Collectors — Collector Trait, Windows/Linux Implementations
 //! 
-//! Phase 2: Stub implementation for CI validation.
-//! Actual implementation begins in Phase 4.
+//! Provides the core collector trait, registry, and platform-specific forensic collectors.
 
 #![warn(missing_docs)]
 #![warn(clippy::all)]
 
-use async_trait::async_trait;
-use serde_json::Value;
-use std::path::PathBuf;
-
-/// Re-exports for public API
 pub mod trait_def;
 pub mod registry;
 pub mod windows;
 pub mod linux;
 
-/// Collector Trait definition
-pub mod trait_def {
-    use super::*;
-    
-    /// Collector trait
-    #[async_trait]
-    pub trait Collector: Send + Sync {
-        fn name(&self) -> &'static str;
-        fn version(&self) -> &'static str;
-        fn supported_actions(&self) -> Vec<&'static str>;
-        fn supported_os(&self) -> Vec<&'static str>;
-        async fn execute(
-            &self,
-            action: &str,
-            params: Value,
-            ctx: &ExecutionContext,
-        ) -> Result<CollectorOutput, CollectorError>;
-    }
-    
-    /// Execution Context
-    pub struct ExecutionContext {
-        pub run_id: String,
-        pub evidence_root: PathBuf,
-        pub target: TargetSpec,
-        pub temp_dir: PathBuf,
-        pub credentials: Option<Value>,
-    }
-    
-    /// Target Specification
-    pub struct TargetSpec {
-        pub target_type: String,
-        pub identifier: String,
-        pub os: String,
-        pub arch: String,
-    }
-    
-    /// Collector Output
-    pub struct CollectorOutput {
-        pub evidence: Vec<crate::evidence::Evidence>,
-        pub artifacts: Vec<ArtifactRef>,
-        pub metrics: CollectorMetrics,
-    }
-    
-    /// Artifact Reference
-    pub struct ArtifactRef {
-        pub path: String,
-        pub type_: String,
-        pub description: String,
-    }
-    
-    /// Collector Metrics
-    pub struct CollectorMetrics {
-        pub duration_ms: u64,
-        pub bytes_read: u64,
-        pub bytes_written: u64,
-        pub errors: Vec<String>,
-    }
-    
-    /// Collector Error
-    #[derive(Debug, thiserror::Error)]
-    pub enum CollectorError {
-        #[error("collector not found: {0}")]
-        NotFound(String),
-        #[error("permission denied: {0}")]
-        PermissionDenied(String),
-        #[error("invalid parameter: {0}")]
-        InvalidParameter(String),
-        #[error("timeout")]
-        Timeout,
-        #[error("internal error: {0}")]
-        Internal(String),
-        #[error("unsupported action: {0}")]
-        UnsupportedAction(String),
-        #[error("unsupported OS: {0}")]
-        UnsupportedOS(String),
-    }
-}
-
-/// Collector Registry module
-pub mod registry {
-    use std::collections::HashMap;
-    use super::trait_def::*;
-    
-    /// Collector Manifest
-    pub struct CollectorManifest {
-        pub name: String,
-        pub version: String,
-        pub supported_os: Vec<String>,
-        pub capabilities: Vec<String>,
-        pub actions: HashMap<String, ActionManifest>,
-        pub public_key: String,
-    }
-    
-    /// Action Manifest
-    pub struct ActionManifest {
-        pub capabilities: Vec<String>,
-        pub params_schema: serde_json::Value,
-        pub description: String,
-    }
-    
-    /// Collector Registry
-    pub struct CollectorRegistry {
-        collectors: HashMap<String, Box<dyn Collector>>,
-        manifests: HashMap<String, CollectorManifest>,
-    }
-    
-    impl CollectorRegistry {
-        pub fn new() -> Self {
-            Self {
-                collectors: HashMap::new(),
-                manifests: HashMap::new(),
-            }
-        }
-        
-        pub fn register(&mut self, collector: Box<dyn Collector>) -> Result<(), RegistryError> {
-            unimplemented!("Phase 4 implementation")
-        }
-        
-        pub fn get(&self, name: &str) -> Option<&dyn Collector> {
-            unimplemented!("Phase 4 implementation")
-        }
-        
-        pub fn get_for_os(&self, os: &str) -> Vec<&dyn Collector> {
-            unimplemented!("Phase 4 implementation")
-        }
-        
-        pub fn get_manifest(&self, name: &str) -> Option<&CollectorManifest> {
-            unimplemented!("Phase 4 implementation")
-        }
-    }
-    
-    /// Registry Error
-    #[derive(Debug, thiserror::Error)]
-    pub enum RegistryError {
-        #[error("collector already registered: {0}")]
-        AlreadyRegistered(String),
-        #[error("collector not found: {0}")]
-        NotFound(String),
-        #[error("invalid manifest: {0}")]
-        InvalidManifest(String),
-    }
-}
-
-/// Windows collectors module
-pub mod windows {
-    /// Windows collector stubs
-    pub mod proc_windows;
-    pub mod file_windows;
-    pub mod registry_windows;
-    pub mod logs_windows;
-    pub mod net_windows;
-}
-
-/// Linux collectors module
-pub mod linux {
-    /// Linux collector stubs
-    pub mod proc_linux;
-    pub mod file_linux;
-    pub mod config_linux;
-    pub mod logs_linux;
-    pub mod net_linux;
-}
-
-/// Re-export Evidence type from jockey-evidence
-pub use crate::evidence::Evidence;
-
-/// Evidence placeholder for cross-crate reference
-pub mod evidence {
-    pub struct Evidence;
-}
+pub use trait_def::*;
+pub use registry::*;
+pub use jockey_evidence::model::Evidence;
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+    use std::sync::Arc;
+    use tempfile::tempdir;
+
     #[test]
     fn test_stub_compiles() {
         assert!(true);
+    }
+
+    #[test]
+    fn test_registry_registration_and_lookup() {
+        let mut registry = CollectorRegistry::new();
+        assert!(registry.get("proc_windows").is_none());
+
+        let keypair = Arc::new(jockey_evidence::receipt::CollectorKeypair::generate());
+        let collector = Box::new(windows::ProcWindowsCollector::new(keypair.clone()));
+        assert!(registry.register(collector).is_ok());
+
+        assert!(registry.get("proc_windows").is_some());
+        assert_eq!(registry.get_for_os("windows").len(), 1);
+        assert_eq!(registry.get_for_os("linux").len(), 0);
+
+        // Duplicate registration should fail
+        let collector_dup = Box::new(windows::ProcWindowsCollector::new(keypair));
+        assert!(matches!(
+            registry.register(collector_dup),
+            Err(RegistryError::AlreadyRegistered(_))
+        ));
+    }
+
+    #[tokio::test]
+    async fn test_proc_windows_metadata_and_execution() {
+        let keypair = Arc::new(jockey_evidence::receipt::CollectorKeypair::generate());
+        let collector = windows::ProcWindowsCollector::new(keypair);
+
+        assert_eq!(collector.name(), "proc_windows");
+        assert_eq!(collector.version(), "0.1.0");
+        assert!(collector.supported_os().contains(&"windows"));
+        assert!(collector.supported_actions().contains(&"list"));
+        assert!(collector.supported_actions().contains(&"get"));
+        assert!(collector.supported_actions().contains(&"tree"));
+
+        let dir = tempdir().unwrap();
+        let evidence_root = dir.path().to_path_buf();
+        let temp_dir = evidence_root.join("tmp");
+
+        let context = ExecutionContext {
+            run_id: "test_run_1".to_string(),
+            evidence_root: evidence_root.clone(),
+            target: jockey_core::TargetSpec::live("localhost", "windows"),
+            temp_dir,
+            credentials: None,
+        };
+
+        // Test list action
+        let list_output = collector
+            .execute("list", serde_json::json!({}), &context)
+            .await
+            .expect("list action should succeed");
+
+        assert!(!list_output.evidence.is_empty());
+        assert_eq!(list_output.evidence.len(), list_output.artifacts.len());
+        let ev = &list_output.evidence[0];
+        assert_eq!(ev.run_id, "test_run_1");
+        assert_eq!(ev.collector, "proc_windows");
+        assert_eq!(ev.hash_algo, "sha256");
+
+        // Verify evidence file exists on disk
+        let disk_path = evidence_root.join(&ev.path);
+        assert!(disk_path.exists());
+
+        // Test tree action
+        let tree_output = collector
+            .execute("tree", serde_json::json!({}), &context)
+            .await
+            .expect("tree action should succeed");
+        assert_eq!(tree_output.evidence.len(), 1);
+
+        // Test get action
+        let get_output = collector
+            .execute("get", serde_json::json!({ "pid": 1234 }), &context)
+            .await
+            .expect("get action should succeed");
+        assert_eq!(get_output.evidence.len(), 1);
+
+        // Test unsupported action
+        let err = collector
+            .execute("invalid_action", serde_json::json!({}), &context)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, CollectorError::UnsupportedAction(_)));
     }
 }

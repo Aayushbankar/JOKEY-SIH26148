@@ -18,4 +18,5 @@ pub enum Capability {
     NetworkListen,
     NetworkCapture,
     NetworkResolve,
+    ConfigEnumerate,
 }

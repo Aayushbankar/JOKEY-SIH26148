@@ -37,9 +37,9 @@ pub fn compile_to_ir(source: &str) -> Result<crate::ir::IrModule, CompileError> 
 }
 
 /// Compile JOCKY source to Execution Contract
-pub fn compile_to_contract(source: &str, target: crate::core::TargetSpec, policy: crate::core::ExecPolicy) -> Result<crate::core::ExecutionContract, CompileError> {
+pub fn compile_to_contract(source: &str, target: jockey_core::TargetSpec, policy: jockey_core::ExecPolicy) -> Result<jockey_core::ExecutionContract, CompileError> {
     let ir = compile_to_ir(source)?;
-    let contract = crate::core::build_contract(&ir, target, policy)?;
+    let contract = jockey_core::build_contract(&ir, target, policy)?;
     Ok(contract)
 }
 
@@ -53,13 +53,8 @@ pub enum CompileError {
     #[error("IR lowering error: {0}")]
     Lower(#[from] crate::ir::LowerError),
     #[error("Contract build error: {0}")]
-    Contract(#[from] crate::core::ContractError),
+    Contract(#[from] jockey_core::ContractError),
 }
 
 #[cfg(test)]
-mod tests {
-    #[test]
-    fn test_stub_compiles() {
-        assert!(true);
-    }
-}
+mod tests;

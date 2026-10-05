@@ -1,0 +1,21 @@
+investigation "ssh-brute-force-linux" {
+    hypothesis "SSH brute force followed by authorized_keys persistence" {
+        mitre: ["T1110", "T1548.002", "T1098.004"]
+    }
+
+    collect logs as ssh_logs where source == "auth" and message contains "Failed password"
+    collect logs as ssh_accept where source == "auth" and message contains "Accepted password"
+    collect file as auth_keys where path matches "/home/*/.ssh/authorized_keys"
+    collect process as ssh_procs where name == "sshd"
+
+    correlate ssh_logs -> ssh_accept by "timestamp_join" window 300s as brute_success
+    correlate brute_success -> auth_keys by "timestamp_join" window 600s as key_persist
+    correlate ssh_procs -> brute_success by "pid_link" as ssh_chain
+
+    timeline "ssh_attack" from brute_success, key_persist, ssh_chain
+    bind hypothesis "SSH brute force followed by authorized_keys persistence" to brute_success, key_persist
+
+    export case "ssh-brute-case" format case_uco
+    export graph "ssh-brute-graph" format cytoscape
+    export report "ssh-brute-report" format markdown
+}

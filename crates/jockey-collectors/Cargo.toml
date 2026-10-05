@@ -19,13 +19,18 @@ tracing = { workspace = true }
 ulid = { workspace = true }
 chrono = { workspace = true }
 blake3 = { workspace = true }
+async-trait = "0.1"
+sha2 = { workspace = true }
+hex = { workspace = true }
+walkdir = "2"
+libc = "0.2"
 
 # Crate-local dependencies
 jockey-core = { path = "../jockey-core" }
 jockey-evidence = { path = "../jockey-evidence" }
 
 # Platform-specific (optional, enabled via features)
-#[cfg(target_os = "windows")]
+[target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.59", features = [
     "Win32_Foundation",
     "Win32_System_Threading",
@@ -36,7 +41,7 @@ windows-sys = { version = "0.59", features = [
     "Win32_NetworkManagement_Ndis",
 ] }
 
-#[cfg(target_os = "linux")]
+[target.'cfg(target_os = "linux")'.dependencies]
 nix = "0.28"
 
 [dev-dependencies]

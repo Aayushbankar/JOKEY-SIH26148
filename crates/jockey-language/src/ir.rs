@@ -1,89 +1,12 @@
 //! JOCKY IR — Intermediate Representation and Lowering
 
 use crate::ast::*;
-use crate::core::*;
+pub use jockey_core::ir::*;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
-use petgraph::graph::DiGraphMap;
+use petgraph::graphmap::DiGraphMap;
 use petgraph::algo::toposort;
 
-/// IR Module
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct IrModule {
-    pub version: u32,
-    pub id: String,
-    pub metadata: IRMetadata,
-    pub steps: Vec<IRStep>,
-    pub outputs: Vec<IROutput>,
-}
-
-/// IR Metadata
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct IRMetadata {
-    pub name: String,
-    pub description: Option<String>,
-    pub author: Option<String>,
-    pub created_at: chrono::DateTime<chrono::Utc>,
-    pub tags: Vec<String>,
-}
-
-/// IR Step
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct IRStep {
-    pub id: String,
-    pub collector: String,
-    pub action: String,
-    pub params: serde_json::Value,
-    pub binds: Vec<String>,
-    pub depends_on: Vec<String>,
-    pub condition: Option<String>,
-}
-
-/// IR Output
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct IROutput {
-    pub name: String,
-    pub from_step: String,
-    pub field: Option<String>,
-}
-
-/// IR Metadata builder
-impl IRMetadata {
-    pub fn new(name: impl Into<String>) -> Self {
-        Self {
-            name: name.into(),
-            description: None,
-            author: None,
-            created_at: chrono::Utc::now(),
-            tags: Vec::new(),
-        }
-    }
-}
-
-/// IR Step builder
-impl IRStep {
-    pub fn new(id: String, collector: impl Into<String>, action: impl Into<String>, params: serde_json::Value) -> Self {
-        Self {
-            id,
-            collector: collector.into(),
-            action: action.into(),
-            params,
-            binds: Vec::new(),
-            depends_on: Vec::new(),
-            condition: None,
-        }
-    }
-    
-    pub fn with_binds(mut self, binds: Vec<String>) -> Self {
-        self.binds = binds;
-        self
-    }
-    
-    pub fn with_depends_on(mut self, deps: Vec<String>) -> Self {
-        self.depends_on = deps;
-        self
-    }
-}
 
 /// IR Lowering errors
 #[derive(Debug, thiserror::Error)]
@@ -132,10 +55,7 @@ pub fn lower_to_ir(typed: &TypedAst) -> Result<IrModule, LowerError> {
                 let source_step = binding_to_step.get(&decl.source)
                     .ok_or(LowerError::MissingBinding(decl.source.clone()))?;
                 
-                let mut params = serde_json::json!({});
-                if let Some(filter) = &decl.filter {
-                    params = serde_json::json!({ "filter": expr_to_json(decl.filter.as_ref().unwrap()) });
-                }
+                let params = serde_json::json!({ "filter": expr_to_json(&decl.filter) });
                 
                 let step = IRStep::new(
                     step_id.clone(),
@@ -327,7 +247,7 @@ fn lower_collect(decl: &CollectDecl) -> Result<(String, String, serde_json::Valu
             if let Some(filter) = &decl.filter {
                 params = serde_json::json!({ "query": expr_to_json(filter) });
             }
-            (collector, "query".to_string(), params)
+            (collector.to_string(), "query".to_string(), params)
         }
         EvidenceType::Network => {
             let collector = if cfg!(target_os = "windows") { "net_windows" } else { "net_linux" };
@@ -335,7 +255,7 @@ fn lower_collect(decl: &CollectDecl) -> Result<(String, String, serde_json::Valu
             if let Some(filter) = &decl.filter {
                 params = serde_json::json!({ "filter": expr_to_json(filter) });
             }
-            (collector, "connections".to_string(), params)
+            (collector.to_string(), "connections".to_string(), params)
         }
     };
     Ok((collector, action, params))
@@ -425,11 +345,11 @@ fn validate_ir(steps: &[IRStep]) -> Result<(), LowerError> {
     // Check for cycles using topological sort
     let mut graph = DiGraphMap::new();
     for step in steps {
-        graph.add_node(step.id.clone());
+        graph.add_node(step.id.as_str());
     }
     for step in steps {
         for dep in &step.depends_on {
-            graph.add_edge(dep.clone(), step.id.clone(), ());
+            graph.add_edge(dep.as_str(), step.id.as_str(), ());
         }
     }
     

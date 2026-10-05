@@ -26,28 +26,29 @@ use windows_sys::Win32::Security::TokenUser;
 #[cfg(target_os = "windows")]
 use windows_sys::Win32::Security::TOKEN_INFORMATION_CLASS;
 use std::collections::HashMap;
-use std::path::PathBuf;
-use std::time::{SystemTime, UNIX_EPOCH};
 use std::sync::Arc;
+use std::time::Duration;
 
 use crate::trait_def::{Collector, CollectorOutput, ExecutionContext, CollectorError, CollectorMetrics, ArtifactRef};
-use jockey_evidence::model::{Evidence, EvidenceType};
-use jockey_core::contract::TargetSpec;
+use jockey_evidence::model::EvidenceType;
 use async_trait::async_trait;
 use serde_json::{json, Value};
 use ulid::Ulid;
-use chrono::{DateTime, Utc, TimeZone};
+use chrono::{DateTime, Utc};
 use sha2::{Sha256, Digest};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 /// Windows Process Collector
 pub struct ProcWindowsCollector {
+    #[allow(dead_code)]
     name: String,
+    #[allow(dead_code)]
     version: String,
+    #[allow(dead_code)]
     keypair: Arc<jockey_evidence::receipt::CollectorKeypair>,
 }
 
 impl ProcWindowsCollector {
+    /// Create a new instance of ProcWindowsCollector
     pub fn new(keypair: Arc<jockey_evidence::receipt::CollectorKeypair>) -> Self {
         Self {
             name: "proc_windows".to_string(),
@@ -57,7 +58,7 @@ impl ProcWindowsCollector {
     }
 
     /// Collect all processes
-    async fn collect_processes(&self, filter: Option<&Value>, context: &ExecutionContext) -> Result<Vec<ProcessInfo>, CollectorError> {
+    async fn collect_processes(&self, filter: Option<&Value>, _context: &ExecutionContext) -> Result<Vec<ProcessInfo>, CollectorError> {
         let mut processes = Vec::new();
 
         #[cfg(target_os = "windows")]
@@ -103,26 +104,28 @@ impl ProcWindowsCollector {
 
                 CloseHandle(snapshot);
             }
-
-            #[cfg(not(target_os = "windows"))]
-            {
-                // Mock implementation for non-Windows platforms (for testing)
-                processes.push(ProcessInfo {
-                    pid: 1234,
-                    ppid: 1,
-                    name: "svchost.exe".to_string(),
-                    path: "C:\\Windows\\System32\\svchost.exe".to_string(),
-                    cmdline: Some("C:\\Windows\\System32\\svchost.exe -k netsvcs".to_string()),
-                    start_time: Some(Utc::now()),
-                    username: Some("SYSTEM".to_string()),
-                });
-            }
-
-            Ok(processes)
         }
+
+        #[cfg(not(target_os = "windows"))]
+        {
+            let _ = filter;
+            // Mock implementation for non-Windows platforms (for testing)
+            processes.push(ProcessInfo {
+                pid: 1234,
+                ppid: 1,
+                name: "svchost.exe".to_string(),
+                path: "C:\\Windows\\System32\\svchost.exe".to_string(),
+                cmdline: Some("C:\\Windows\\System32\\svchost.exe -k netsvcs".to_string()),
+                start_time: Some(Utc::now()),
+                username: Some("SYSTEM".to_string()),
+            });
+        }
+
+        Ok(processes)
     }
 
     /// Check if process matches filter
+    #[allow(dead_code)]
     fn matches_filter(&self, name: &str, pid: u32, ppid: u32, filter: &Value) -> bool {
         if let Some(obj) = filter.as_object() {
             if let Some(name_filter) = obj.get("name_contains") {
@@ -146,6 +149,8 @@ impl ProcWindowsCollector {
                     }
                 }
             }
+            true
+        } else {
             true
         }
     }
@@ -175,30 +180,49 @@ impl ProcWindowsCollector {
                 }
             }
 
-            #[cfg(not(target_os = "windows"))]
-            {
-                return ProcessInfo {
-                    pid,
-                    ppid,
-                    name: name.to_string(),
-                    path: format!("C:\\Windows\\System32\\{}", name),
-                    cmdline: Some(format!("{} -k netsvcs", name)),
-                    start_time: Some(Utc::now() - Duration::from_secs(3600)),
-                    username: Some("SYSTEM".to_string()),
-                };
+            ProcessInfo {
+                pid,
+                ppid,
+                name: name.to_string(),
+                path: "unknown".to_string(),
+                cmdline: None,
+                start_time: None,
+                username: None,
+            }
+        }
+
+        #[cfg(not(target_os = "windows"))]
+        {
+            let _ = (pid, ppid);
+            ProcessInfo {
+                pid,
+                ppid,
+                name: name.to_string(),
+                path: format!("C:\\Windows\\System32\\{}", name),
+                cmdline: Some(format!("{} -k netsvcs", name)),
+                start_time: Some(Utc::now() - Duration::from_secs(3600)),
+                username: Some("SYSTEM".to_string()),
             }
         }
     }
 }
 
+/// Metadata structure describing an enumerated process
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ProcessInfo {
+    /// Process ID
     pub pid: u32,
+    /// Parent process ID
     pub ppid: u32,
+    /// Process executable name
     pub name: String,
+    /// Full binary path
     pub path: String,
+    /// Command line arguments
     pub cmdline: Option<String>,
+    /// Process start time
     pub start_time: Option<DateTime<Utc>>,
+    /// User executing the process
     pub username: Option<String>,
 }
 
@@ -214,9 +238,10 @@ fn wide_to_string(wide: &[u16; MAX_PATH]) -> String {
 fn get_process_path(handle: HANDLE) -> String {
     unsafe {
         let mut buffer: Vec<u16> = vec![0; MAX_PATH + 1];
-        let mut size = (MAX_PATH + 1) as u32;
+        let size = (MAX_PATH + 1) as u32;
         if windows_sys::Win32::System::Threading::GetModuleFileNameExW(handle, 0, buffer.as_mut_ptr(), size) > 0 {
-            wide_to_string(&buffer)
+            let len = buffer.iter().position(|&c| c == 0).unwrap_or(buffer.len());
+            String::from_utf16_lossy(&buffer[..len])
         } else {
             "unknown".to_string()
         }
@@ -225,8 +250,7 @@ fn get_process_path(handle: HANDLE) -> String {
 
 /// Get process command line (simplified)
 #[cfg(target_os = "windows")]
-fn get_command_line(handle: HANDLE) -> Option<String> {
-    // This is a simplified version; real implementation would use WMI or PEB parsing
+fn get_command_line(_handle: HANDLE) -> Option<String> {
     None
 }
 
@@ -240,16 +264,13 @@ fn get_process_start_time(handle: HANDLE) -> Option<DateTime<Utc>> {
         let mut user_time = std::mem::zeroed();
 
         if GetProcessTimes(handle, &mut creation_time, &mut exit_time, &mut kernel_time, &mut user_time) != 0 {
-            // FILETIME to DateTime conversion
             let ft = (creation_time.dwHighDateTime as u64) << 32 | creation_time.dwLowDateTime as u64;
-            // FILETIME is 100-nanosecond intervals since Jan 1, 1601
-            // Convert to Unix timestamp
-            const EPOCH_DIFF: u64 = 116444736000000000; // 100ns intervals between 1601 and 1970
+            const EPOCH_DIFF: u64 = 116444736000000000;
             if ft > EPOCH_DIFF {
                 let unix_ns = (ft - EPOCH_DIFF) * 100;
                 let secs = unix_ns / 1_000_000_000;
                 let nanos = (unix_ns % 1_000_000_000) as u32;
-                return Some(chrono::DateTime::from_timestamp(secs as i64, nanos).unwrap_or_else(|| Utc::now()));
+                return Some(chrono::DateTime::from_timestamp(secs as i64, nanos).unwrap_or_else(Utc::now));
             }
         }
         None
@@ -258,25 +279,18 @@ fn get_process_start_time(handle: HANDLE) -> Option<DateTime<Utc>> {
 
 /// Get process username (simplified)
 #[cfg(target_os = "windows")]
-fn get_process_user(handle: HANDLE) -> Option<String> {
-    // Simplified - real implementation would use OpenProcessToken + GetTokenInformation
+fn get_process_user(_handle: HANDLE) -> Option<String> {
     None
-}
-
-#[cfg(target_os = "windows")]
-fn wide_to_string(wide: &[u16; MAX_PATH]) -> String {
-    let len = wide.iter().position(|&c| c == 0).unwrap_or(MAX_PATH);
-    String::from_utf16_lossy(&wide[..len])
 }
 
 #[async_trait]
 impl Collector for ProcWindowsCollector {
     fn name(&self) -> &'static str {
-        &self.name
+        "proc_windows"
     }
 
     fn version(&self) -> &'static str {
-        &self.version
+        "0.1.0"
     }
 
     fn supported_actions(&self) -> Vec<&'static str> {
@@ -295,8 +309,8 @@ impl Collector for ProcWindowsCollector {
     ) -> Result<CollectorOutput, CollectorError> {
         match action {
             "list" => {
-                let filter = params.get("filter").cloned();
-                let processes = self.collect_processes(filter.as_ref(), context).await?;
+                let filter = params.get("filter");
+                let processes = self.collect_processes(filter, context).await?;
                 
                 // Convert to Evidence objects
                 let mut evidence_list = Vec::new();
@@ -312,21 +326,23 @@ impl Collector for ProcWindowsCollector {
                     
                     // Write to evidence file
                     let evidence_path = context.evidence_root.join(&path);
-                    std::fs::create_dir_all(evidence_path.parent().unwrap())?;
+                    if let Some(parent) = evidence_path.parent() {
+                        std::fs::create_dir_all(parent)?;
+                    }
                     std::fs::write(&evidence_path, proc_bytes)?;
                     
                     // Compute SHA-256 hash
                     let mut hasher = Sha256::new();
-                    hasher.update(&proc_bytes);
+                    hasher.update(proc_bytes);
                     let hash = hex::encode(hasher.finalize());
                     
                     let evidence = jockey_evidence::model::Evidence::new(
                         context.run_id.clone(),
-                        context.step_id.clone(),
+                        action.to_string(),
                         self.name.clone(),
-                        jockey_evidence::model::EvidenceType::Process,
+                        EvidenceType::Process,
                         format!("Process: {} (PID {})", proc.name, proc.pid),
-                        path,
+                        path.clone(),
                         proc_bytes.len() as u64,
                         hash,
                         json!({
@@ -343,7 +359,7 @@ impl Collector for ProcWindowsCollector {
                     evidence_list.push(evidence);
                     
                     artifacts.push(ArtifactRef {
-                        path: path.clone(),
+                        path,
                         type_: "artifact/process".to_string(),
                         description: format!("Process {} (PID {})", proc.name, proc.pid),
                     });
@@ -353,7 +369,7 @@ impl Collector for ProcWindowsCollector {
                     evidence: evidence_list,
                     artifacts,
                     metrics: CollectorMetrics {
-                        duration_ms: 0, // TODO: measure
+                        duration_ms: 0,
                         bytes_read: 0,
                         bytes_written: 0,
                         errors: vec![],
@@ -361,17 +377,63 @@ impl Collector for ProcWindowsCollector {
                 })
             }
             "get" => {
-                // Get single process by PID
-                let pid = params.get("pid").and_then(|v| v.as_u64()).ok_or(CollectorError::InvalidParameter("pid required".to_string()))? as u32;
+                let pid = params
+                    .get("pid")
+                    .and_then(|v| v.as_u64())
+                    .ok_or_else(|| CollectorError::InvalidParameter("pid required".to_string()))? as u32;
                 
                 let proc = self.get_process_info(pid, "unknown", 0).await;
-                
-                // Similar to list but single process
-                // ... (similar implementation)
-                todo!("get action not fully implemented")
+                let evidence_id = Ulid::new().to_string();
+                let path = format!("evidence/{}.jsonl", evidence_id);
+                let proc_json = serde_json::to_string(&proc)?;
+                let proc_bytes = proc_json.as_bytes();
+
+                let evidence_path = context.evidence_root.join(&path);
+                if let Some(parent) = evidence_path.parent() {
+                    std::fs::create_dir_all(parent)?;
+                }
+                std::fs::write(&evidence_path, proc_bytes)?;
+
+                let mut hasher = Sha256::new();
+                hasher.update(proc_bytes);
+                let hash = hex::encode(hasher.finalize());
+
+                let evidence = jockey_evidence::model::Evidence::new(
+                    context.run_id.clone(),
+                    action.to_string(),
+                    self.name.clone(),
+                    EvidenceType::Process,
+                    format!("Process: {} (PID {})", proc.name, proc.pid),
+                    path.clone(),
+                    proc_bytes.len() as u64,
+                    hash,
+                    json!({
+                        "pid": proc.pid,
+                        "ppid": proc.ppid,
+                        "name": proc.name,
+                        "path": proc.path,
+                        "cmdline": proc.cmdline,
+                        "start_time": proc.start_time.map(|t| t.to_rfc3339()),
+                        "username": proc.username,
+                    }),
+                );
+
+                Ok(CollectorOutput {
+                    evidence: vec![evidence],
+                    artifacts: vec![ArtifactRef {
+                        path,
+                        type_: "artifact/process".to_string(),
+                        description: format!("Process {} (PID {})", proc.name, proc.pid),
+                    }],
+                    metrics: CollectorMetrics {
+                        duration_ms: 0,
+                        bytes_read: 0,
+                        bytes_written: proc_bytes.len() as u64,
+                        errors: vec![],
+                    },
+                })
             }
             "tree" => {
-                // Build process tree
                 let processes = self.collect_processes(None, context).await?;
                 let tree = build_process_tree(processes);
                 
@@ -379,17 +441,23 @@ impl Collector for ProcWindowsCollector {
                 let path = format!("evidence/{}.jsonl", evidence_id);
                 let tree_json = serde_json::to_string(&tree)?;
                 
+                let evidence_path = context.evidence_root.join(&path);
+                if let Some(parent) = evidence_path.parent() {
+                    std::fs::create_dir_all(parent)?;
+                }
+                std::fs::write(&evidence_path, tree_json.as_bytes())?;
+
                 let mut hasher = Sha256::new();
                 hasher.update(tree_json.as_bytes());
                 let hash = hex::encode(hasher.finalize());
                 
                 let evidence = jockey_evidence::model::Evidence::new(
                     context.run_id.clone(),
-                    context.step_id.clone(),
+                    action.to_string(),
                     self.name.clone(),
-                    jockey_evidence::model::EvidenceType::Process,
+                    EvidenceType::Process,
                     "Process Tree".to_string(),
-                    path,
+                    path.clone(),
                     tree_json.len() as u64,
                     hash,
                     json!({ "process_count": tree.len() }),
@@ -398,14 +466,14 @@ impl Collector for ProcWindowsCollector {
                 Ok(CollectorOutput {
                     evidence: vec![evidence],
                     artifacts: vec![ArtifactRef {
-                        path: path.clone(),
+                        path,
                         type_: "artifact/process_tree".to_string(),
                         description: "Process tree".to_string(),
                     }],
                     metrics: CollectorMetrics {
                         duration_ms: 0,
                         bytes_read: 0,
-                        bytes_written: 0,
+                        bytes_written: tree_json.len() as u64,
                         errors: vec![],
                     },
                 })
@@ -421,7 +489,7 @@ fn build_process_tree(processes: Vec<ProcessInfo>) -> Vec<ProcessTreeNode> {
     let mut roots = Vec::new();
     
     // Create nodes
-    for proc in processes {
+    for proc in &processes {
         nodes.insert(proc.pid, ProcessTreeNode {
             process: proc.clone(),
             children: Vec::new(),
@@ -429,26 +497,32 @@ fn build_process_tree(processes: Vec<ProcessInfo>) -> Vec<ProcessTreeNode> {
     }
     
     // Link children to parents
-    for proc in processes {
+    for proc in &processes {
         if proc.ppid != 0 {
-            if let Some(parent) = nodes.get_mut(&proc.ppid) {
-                parent.children.push(nodes.remove(&proc.pid).unwrap());
+            if let Some(child_node) = nodes.remove(&proc.pid) {
+                if let Some(parent) = nodes.get_mut(&proc.ppid) {
+                    parent.children.push(child_node);
+                } else {
+                    // Parent not found, treat as root
+                    roots.push(child_node);
+                }
             }
         }
     }
     
-    // Collect roots
-    for (pid, node) in nodes {
-        if node.process.ppid == 0 || !nodes.contains_key(&node.process.ppid) {
-            roots.push(node);
-        }
+    // Collect remaining roots
+    for (_pid, node) in nodes {
+        roots.push(node);
     }
     
     roots
 }
 
+/// Tree node representing a process and its child processes
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ProcessTreeNode {
+    /// Process details
     pub process: ProcessInfo,
+    /// Child process nodes
     pub children: Vec<ProcessTreeNode>,
 }

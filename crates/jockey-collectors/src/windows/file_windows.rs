@@ -1,9 +1,10 @@
 //! Windows File Collector — Stub Implementation
 
 use async_trait::async_trait;
-use crate::trait_def::{Collector, CollectorOutput, ExecutionContext, CollectorError, CollectorMetrics, ArtifactRef};
+use crate::trait_def::{Collector, CollectorOutput, ExecutionContext, CollectorError};
 use serde_json::Value;
 
+/// Windows File Collector
 pub struct FileWindowsCollector;
 
 #[async_trait]
@@ -27,11 +28,11 @@ impl Collector for FileWindowsCollector {
     async fn execute(
         &self,
         action: &str,
-        _params: serde_json::Value,
+        _params: Value,
         _context: &ExecutionContext,
-    ) -> Result<CollectorOutput, crate::trait_def::CollectorError> {
+    ) -> Result<CollectorOutput, CollectorError> {
         match action {
-            _ => Err(crate::trait_def::CollectorError::UnsupportedAction(format!("file_windows action {} not implemented", action)))
+            _ => Err(CollectorError::UnsupportedAction(format!("file_windows action {} not implemented", action)))
         }
     }
 }

@@ -1,0 +1,38 @@
+[
+  {
+    "id": "01HY876543210ABCDEF123458A",
+    "evidence_id": "01HY876543210ABCDEF123456A",
+    "receipt_id": "01HY876543210ABCDEF123457A",
+    "prev_provenance_id": null,
+    "action": "collected",
+    "actor": "proc_linux",
+    "actor_version": "0.1.0",
+    "input_hashes": [],
+    "output_hashes": [
+      "07d4d956550608e35a98f39f3cc71756c6591316fc3f036364cd89092d0348bd"
+    ],
+    "parameters": {},
+    "timestamp": "2026-10-04T12:00:02Z",
+    "signature": ""
+  },
+  {
+    "id": "01HY876543210ABCDEF123458B",
+    "evidence_id": "01HY876543210ABCDEF123456A",
+    "receipt_id": "01HY876543210ABCDEF123457A",
+    "prev_provenance_id": "01HY876543210ABCDEF123458A",
+    "action": "filtered",
+    "actor": "jockey_filter",
+    "actor_version": "0.1.0",
+    "input_hashes": [
+      "07d4d956550608e35a98f39f3cc71756c6591316fc3f036364cd89092d0348bd"
+    ],
+    "output_hashes": [
+      "07d4d956550608e35a98f39f3cc71756c6591316fc3f036364cd89092d0348bd"
+    ],
+    "parameters": {
+      "predicate": "name contains svchost"
+    },
+    "timestamp": "2026-10-04T12:00:03Z",
+    "signature": ""
+  }
+]

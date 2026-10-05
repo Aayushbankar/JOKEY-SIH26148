@@ -16,3 +16,7 @@ pub mod collector;
 
 /// Re-export commonly used types
 pub use target::TargetSpec;
+pub use contract::{ExecutionContract, ExecStep, RetryPolicy, ExecPolicy, ContractError, build_contract};
+pub use policy::PolicyEngine;
+pub use capability::Capability;
+pub use collector::{CollectorManifest, ActionManifest, builtin_manifests};

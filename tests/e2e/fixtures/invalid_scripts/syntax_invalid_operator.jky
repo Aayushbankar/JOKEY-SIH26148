@@ -1,0 +1,3 @@
+investigation "invalid-op" {
+    collect process as procs where pid =!= 1000
+}

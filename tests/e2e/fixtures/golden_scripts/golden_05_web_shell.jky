@@ -1,0 +1,24 @@
+investigation "web-shell-detection" {
+    hypothesis "Web shell deployed via file upload, used for command execution" {
+        mitre: ["T1190", "T1059", "T1505.003"]
+    }
+
+    collect logs as web_logs where source in ["IIS", "Apache", "Nginx"] and status == 200 and method == "POST"
+    collect file as uploads where path matches "/var/www/*/uploads/*" or path matches "C:\\inetpub\\*\\uploads\\*"
+    collect process as web_procs where parent_name in ["w3wp.exe", "httpd", "nginx", "php-fpm"]
+    collect network as web_net where process_name in ["w3wp.exe", "httpd", "nginx", "php-fpm"]
+
+    filter uploads where extension in [".php", ".asp", ".aspx", ".jsp", ".jspx"]
+    match web_procs where command_line contains "cmd.exe" or command_line contains "/bin/bash"
+
+    correlate web_logs -> uploads by "timestamp_join" window 120s as upload_exec
+    correlate upload_exec -> web_procs by "process_netlink" as shell_chain
+    correlate shell_chain -> web_net by "process_netlink" as shell_c2
+
+    timeline "web_shell" from upload_exec, shell_chain, shell_c2
+    bind hypothesis "Web shell deployed via file upload, used for command execution" to upload_exec, shell_chain
+
+    export case "web-shell-case" format case_uco
+    export graph "web-shell-graph" format cytoscape
+    export report "web-shell-report" format markdown
+}

@@ -1,0 +1,22 @@
+investigation "dns-exfiltration" {
+    hypothesis "Data exfiltration via DNS tunneling" {
+        mitre: ["T1048.003", "T1572"]
+    }
+
+    collect network as dns_traffic where destination_port == 53 and protocol == "UDP"
+    collect process as dns_procs where name in ["dns.exe", "named", "dnsmasq", "systemd-resolved"]
+    collect logs as dns_logs where source == "DNS" and query_type == "TXT"
+
+    filter dns_traffic where query_length > 100 or subdomain_count > 10
+    match dns_logs where response_size > 512
+
+    correlate dns_traffic -> dns_logs by "timestamp_join" window 10s as dns_anomaly
+    correlate dns_anomaly -> dns_procs by "pid_link" as dns_chain
+
+    timeline "dns_exfil" from dns_anomaly, dns_chain
+    bind hypothesis "Data exfiltration via DNS tunneling" to dns_anomaly, dns_chain
+
+    export case "dns-exfil-case" format case_uco
+    export graph "dns-exfil-graph" format cytoscape
+    export report "dns-exfil-report" format markdown
+}

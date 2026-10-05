@@ -1,0 +1,19 @@
+investigation "wmi-persistence" {
+    hypothesis "Persistence via WMI event subscription" {
+        mitre: ["T1546.003"]
+    }
+
+    collect logs as wmi_logs where source == "Microsoft-Windows-WMI-Activity/Operational" and EventID in [5860, 5861]
+    collect registry as wmi_reg where path matches "HKLM\\Software\\Microsoft\\WBEM\\Scripting\\*"
+    collect process as wmi_procs where name == "wmiprvse.exe"
+
+    correlate wmi_logs -> wmi_reg by "timestamp_join" window 60s as wmi_sub
+    correlate wmi_sub -> wmi_procs by "process_netlink" as wmi_chain
+
+    timeline "wmi_persistence" from wmi_sub, wmi_chain
+    bind hypothesis "Persistence via WMI event subscription" to wmi_sub, wmi_chain
+
+    export case "wmi-persist-case" format case_uco
+    export graph "wmi-persist-graph" format cytoscape
+    export report "wmi-persist-report" format markdown
+}

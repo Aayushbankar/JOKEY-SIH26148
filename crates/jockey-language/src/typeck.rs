@@ -91,6 +91,17 @@ pub fn type_check(ast: &AstModule) -> Result<TypedAst, TypeError> {
                 }
                 // Validate correlation method
                 validate_correlation_method(&decl.relation, decl.span)?;
+                
+                // Register correlation binding
+                let source_info = symbol_table.bindings.get(&decl.source).unwrap().clone();
+                let target_info = symbol_table.bindings.get(&decl.target).unwrap().clone();
+                let mut inferred = source_info.inferred_capabilities;
+                inferred.extend(target_info.inferred_capabilities);
+                symbol_table.bindings.insert(decl.binding.clone(), BindingInfo {
+                    name: decl.binding.clone(),
+                    evidence_type: source_info.evidence_type,
+                    inferred_capabilities: inferred,
+                });
             }
             Statement::Timeline(decl) => {
                 for src in &decl.sources {
@@ -201,7 +212,7 @@ fn validate_correlation_method(method: &str, span: Span) -> Result<(), TypeError
 }
 
 /// Infer capabilities from collect declaration
-fn infer_capabilities(evidence_type: &EvidenceType, filter: &Option<Expression>) -> Vec<Capability> {
+pub fn infer_capabilities(evidence_type: &EvidenceType, filter: &Option<Expression>) -> Vec<Capability> {
     let mut caps = Vec::new();
     
     match evidence_type {
@@ -241,7 +252,7 @@ fn infer_capabilities(evidence_type: &EvidenceType, filter: &Option<Expression>)
 }
 
 /// Check if expression contains PID filter
-fn has_pid_filter(expr: &Expression) -> bool {
+pub fn has_pid_filter(expr: &Expression) -> bool {
     match expr {
         Expression::Binary(bin) => {
             if let Expression::Identifier(name) = bin.left.as_ref() {

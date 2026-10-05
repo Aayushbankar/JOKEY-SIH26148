@@ -8,6 +8,10 @@ repository = "https://github.com/RishiSakhija/JOKEY---SIH26148"
 categories = ["forensics", "security", "command-line-utilities"]
 keywords = ["forensics", "dfir", "cli"]
 
+[[bin]]
+name = "jockey"
+path = "src/main.rs"
+
 [dependencies]
 # Workspace dependencies
 tokio = { workspace = true, features = ["full"] }
@@ -23,6 +27,7 @@ hostname = "0.3"
 ulid = { workspace = true }
 chrono = { workspace = true }
 sha2 = { workspace = true }
+hex = { workspace = true }
 ed25519-dalek = { workspace = true }
 
 # Crate-local dependencies
@@ -31,6 +36,7 @@ jockey-core = { path = "../jockey-core" }
 jockey-runtime = { path = "../jockey-runtime" }
 jockey-collectors = { path = "../jockey-collectors" }
 jockey-evidence = { path = "../jockey-evidence" }
+jockey-correlation = { path = "../jockey-correlation" }
 
 [dev-dependencies]
 proptest = { workspace = true }

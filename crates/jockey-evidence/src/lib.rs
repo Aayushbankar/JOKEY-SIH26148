@@ -7,15 +7,7 @@
 
 pub mod canonicalize;
 
-use crate::canonicalize::Canonicalize;
 use chrono::{DateTime, Utc};
-use ed25519_dalek::{SigningKey, VerifyingKey, Signature, Signer, Verifier};
-use rand::rngs::OsRng;
-use rand::Rng;
-use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
-use ulid::Ulid;
-use hex;
 
 /// Core verification types (defined first so modules can use them)
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -92,11 +84,11 @@ pub enum VerifyError {
 
 /// Evidence Model module
 pub mod model {
-    use super::*;
     use crate::canonicalize::Canonicalize;
     use chrono::{DateTime, Utc};
     use serde::{Deserialize, Serialize};
     use ulid::Ulid;
+    use sha2::{Digest, Sha256};
 
     /// Evidence type enumeration
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -194,16 +186,12 @@ pub mod model {
 
 /// Evidence Receipt module
 pub mod receipt {
-    use super::*;
-    use crate::model::Evidence;
-    use crate::canonicalize::Canonicalize;
     use chrono::{DateTime, Utc};
     use ed25519_dalek::{SigningKey, VerifyingKey, Signature, Signer, Verifier};
     use rand::rngs::OsRng;
     use rand::Rng;
     use serde::{Deserialize, Serialize};
     use ulid::Ulid;
-    use sha2::{Sha256, Digest};
     use hex;
 
     /// Host information at collection time
@@ -380,7 +368,6 @@ pub mod receipt {
 
 /// Provenance module
 pub mod provenance {
-    use super::*;
     use chrono::{DateTime, Utc};
     use serde::{Deserialize, Serialize};
     use ulid::Ulid;
@@ -591,3 +578,6 @@ pub mod verification {
         Ok(report)
     }
 }
+
+#[cfg(test)]
+mod tests;

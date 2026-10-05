@@ -1,0 +1,13 @@
+{
+  "case_id": "sample_case_sih26148",
+  "run_id": "01HY876543210ABCDEF1234567",
+  "description": "Synthetic multi-stage malware execution case",
+  "evidence_count": 3,
+  "receipt_count": 3,
+  "provenance_chains": 1,
+  "evidence_files": [
+    "evidence/evidence_proc_01.json",
+    "evidence/evidence_proc_02.json",
+    "evidence/evidence_file_01.json"
+  ]
+}

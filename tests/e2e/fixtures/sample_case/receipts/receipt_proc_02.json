@@ -1,0 +1,18 @@
+{
+  "id": "01HY876543210ABCDEF123457B",
+  "evidence_id": "01HY876543210ABCDEF123456B",
+  "run_id": "01HY876543210ABCDEF1234567",
+  "collector": "proc_linux",
+  "collector_version": "0.1.0",
+  "signature": "88d69739987ef2f6919a80944fb3aa608d38dc8517dda7714319df1663da7b048e14a0bb02c8174c1bc9e4ad9315ba991510aed50a7a5e536cf1fd0cecc31109",
+  "public_key": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+  "payload_hash": "a42c9237b5d06aadfe5ad37fe810f0451df8bd5046b61d6bb2debe36d6761b3d",
+  "payload_hash_algo": "sha256",
+  "timestamp": "2026-10-04T12:00:06Z",
+  "host_info": {
+    "hostname": "forensic-target",
+    "os": "linux",
+    "kernel": "6.1.0-android",
+    "collector_pid": 500
+  }
+}

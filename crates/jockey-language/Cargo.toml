@@ -19,6 +19,7 @@ pest = { workspace = true }
 pest_derive = { workspace = true }
 ulid = { workspace = true }
 chrono = { workspace = true }
+petgraph = { workspace = true }
 
 # Crate-local dependencies
 jockey-core = { path = "../jockey-core" }

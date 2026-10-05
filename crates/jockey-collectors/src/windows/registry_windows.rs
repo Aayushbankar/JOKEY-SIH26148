@@ -1,9 +1,10 @@
 //! Windows Registry Collector — Stub Implementation
 
 use async_trait::async_trait;
-use crate::trait_def::{Collector, CollectorOutput, ExecutionContext, CollectorError, CollectorMetrics, ArtifactRef};
+use crate::trait_def::{Collector, CollectorOutput, ExecutionContext, CollectorError};
 use serde_json::Value;
 
+/// Windows Registry Collector
 pub struct RegistryWindowsCollector;
 
 #[async_trait]
@@ -17,7 +18,7 @@ impl Collector for RegistryWindowsCollector {
     }
 
     fn supported_actions(&self) -> Vec<&'static str> {
-        vec!["enumerate", "get", "monitor"]
+        vec!["get_key", "get_value", "enumerate", "persistence", "sam"]
     }
 
     fn supported_os(&self) -> Vec<&'static str> {
@@ -27,11 +28,11 @@ impl Collector for RegistryWindowsCollector {
     async fn execute(
         &self,
         action: &str,
-        _params: serde_json::Value,
+        _params: Value,
         _context: &ExecutionContext,
-    ) -> Result<CollectorOutput, crate::trait_def::CollectorError> {
+    ) -> Result<CollectorOutput, CollectorError> {
         match action {
-            _ => Err(crate::trait_def::CollectorError::UnsupportedAction(format!("registry_windows action {} not implemented", action)))
+            _ => Err(CollectorError::UnsupportedAction(format!("registry_windows action {} not implemented", action)))
         }
     }
 }

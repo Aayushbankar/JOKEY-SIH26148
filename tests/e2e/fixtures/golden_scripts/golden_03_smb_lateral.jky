@@ -1,0 +1,21 @@
+investigation "smb-lateral-movement" {
+    hypothesis "Lateral movement via SMB admin shares and service creation" {
+        mitre: ["T1021.002", "T1543.003", "T1569.002"]
+    }
+
+    collect logs as smb_logs where source == "Security" and EventID in [4624, 4625, 5145]
+    collect logs as svc_logs where source == "System" and EventID == 7045
+    collect network as smb_connections where destination_port == 445
+    collect process as svc_procs where name == "services.exe"
+
+    correlate smb_logs -> svc_logs by "timestamp_join" window 60s as smb_svc
+    correlate smb_svc -> smb_connections by "process_netlink" as smb_chain
+    correlate svc_procs -> smb_chain by "pid_link" as svc_smb
+
+    timeline "smb_lateral" from smb_svc, smb_chain, svc_smb
+    bind hypothesis "Lateral movement via SMB admin shares and service creation" to smb_svc, smb_chain
+
+    export case "smb-lateral-case" format case_uco
+    export graph "smb-lateral-graph" format cytoscape
+    export report "smb-lateral-report" format markdown
+}

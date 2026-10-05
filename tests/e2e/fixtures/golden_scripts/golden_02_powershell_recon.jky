@@ -1,0 +1,24 @@
+investigation "powershell-reconnaissance" {
+    hypothesis "PowerShell used for reconnaissance and credential access" {
+        mitre: ["T1059.001", "T1003", "T1082"]
+    }
+
+    collect process as ps_procs where name == "powershell.exe"
+    collect process as ps_children where parent_name == "powershell.exe"
+    collect logs as ps_logs where source == "Microsoft-Windows-PowerShell/Operational"
+    collect network as ps_net where process_name == "powershell.exe"
+
+    filter ps_procs where command_line matches "(?i)(invoke-expression|iex|downloadstring|webclient)"
+    match ps_children where name in ["whoami.exe", "net.exe", "systeminfo.exe", "ipconfig.exe"]
+
+    correlate ps_procs -> ps_children by "pid_link" as ps_tree
+    correlate ps_tree -> ps_net by "process_netlink" as ps_network
+    correlate ps_logs -> ps_procs by "timestamp_join" window 60s as ps_logged
+
+    timeline "powershell_activity" from ps_tree, ps_network, ps_logged
+    bind hypothesis "PowerShell used for reconnaissance and credential access" to ps_tree, ps_network
+
+    export case "ps-recon-case" format case_uco
+    export timeline "ps-recon-timeline" format timesketch
+    export report "ps-recon-report" format markdown
+}

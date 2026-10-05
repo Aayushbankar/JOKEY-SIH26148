@@ -1,0 +1,38 @@
+investigation "multi-stage-apt" {
+    hypothesis "Multi-stage APT attack: initial access → lateral movement → data staging → exfil" {
+        mitre: ["T1190", "T1021.004", "T1005", "T1041"]
+    }
+
+    // Stage 1: Initial Access (Web exploit)
+    collect logs as web_exploit where source == "IIS" and status == 500 and path contains "exploit"
+    collect process as web_shell where parent_name == "w3wp.exe" and command_line contains "cmd"
+
+    // Stage 2: Lateral Movement (Pass-the-Hash)
+    collect logs as pth_logs where source == "Security" and EventID == 4624 and LogonType == 9
+    collect network as smb_admin where destination_port == 445 and share_name in ["ADMIN$", "C$", "IPC$"]
+
+    // Stage 3: Data Staging
+    collect file as staged_data where path matches "*\\staging\\*" and size > 100000000
+    collect process as archive_procs where command_line contains "7z" or command_line contains "rar"
+
+    // Stage 4: Exfiltration
+    collect network as exfil_traffic where destination_port in [443, 80, 21, 22] and bytes_out > 10000000
+    collect logs as proxy_logs where source == "Proxy" and bytes_out > 10000000
+
+    // Correlations
+    correlate web_exploit -> web_shell by "pid_link" as stage1
+    correlate stage1 -> pth_logs by "timestamp_join" window 3600s as stage2
+    correlate pth_logs -> smb_admin by "process_netlink" as smb_movement
+    correlate smb_admin -> staged_data by "timestamp_join" window 7200s as stage3
+    correlate staged_data -> archive_procs by "pid_link" as archived
+    correlate archived -> exfil_traffic by "timestamp_join" window 1800s as stage4
+    correlate exfil_traffic -> proxy_logs by "timestamp_join" window 60s as exfil_confirmed
+
+    timeline "full_attack" from stage1, stage2, smb_movement, stage3, archived, stage4, exfil_confirmed
+    bind hypothesis "Multi-stage APT attack" to stage1, stage2, smb_movement, stage3, archived, stage4, exfil_confirmed
+
+    export case "apt-full-case" format case_uco
+    export graph "apt-full-graph" format cytoscape
+    export timeline "apt-full-timeline" format timesketch
+    export report "apt-full-report" format markdown
+}

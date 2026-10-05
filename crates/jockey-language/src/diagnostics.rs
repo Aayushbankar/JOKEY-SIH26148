@@ -2,6 +2,7 @@
 
 use crate::ast::*;
 use crate::span::Span;
+use serde::{Serialize, Deserialize};
 use std::fmt;
 
 /// Diagnostic severity
@@ -98,7 +99,7 @@ pub fn report_diagnostics(bag: &DiagnosticBag, source: &str) {
             // Print source context
             if let Some(line) = source.lines().nth(span.start.line.saturating_sub(1)) {
                 eprintln!("  | {}", line.trim());
-                eprintln!("  | {}{}", " ".repeat(span.start.column), "^".repeat(span.end.column - span.start.column).max(1));
+                eprintln!("  | {}{}", " ".repeat(span.start.column), "^".repeat(span.end.column.saturating_sub(span.start.column).max(1)));
             }
         } else {
             eprintln!("{}: {}", severity_str, diag.message);

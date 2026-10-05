@@ -4,6 +4,7 @@
 pub struct Dispatcher;
 
 impl Dispatcher {
+    /// Create a new Dispatcher instance
     pub fn new() -> Self {
         Self
     }

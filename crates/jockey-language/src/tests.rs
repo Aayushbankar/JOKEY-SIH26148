@@ -3,7 +3,9 @@
 #[cfg(test)]
 mod tests {
     use crate::*;
+    use crate::ast::*;
     
+
     #[test]
     fn test_parse_simple_investigation() {
         let source = r#"
@@ -243,8 +245,8 @@ investigation "test" {
         assert!(!ir.id.is_empty());
         assert_eq!(ir.steps.len(), 2);
         
-        // Check first step is collect
-        assert_eq!(ir.steps[0].collector, "proc_windows");
+        let expected = if cfg!(target_os = "windows") { "proc_windows" } else { "proc_linux" };
+        assert_eq!(ir.steps[0].collector, expected);
         assert_eq!(ir.steps[0].action, "list");
         assert_eq!(ir.steps[0].binds, vec!["procs"]);
         
@@ -258,8 +260,7 @@ investigation "test" {
     #[test]
     fn test_ir_validation() {
         // Test that IR validation catches cycles
-        use crate::ir::*;
-        use petgraph::graph::DiGraphMap;
+        use petgraph::graphmap::DiGraphMap;
         use petgraph::algo::toposort;
         
         let mut graph = DiGraphMap::new();
@@ -281,7 +282,8 @@ investigation "test" {
         
         let ir = compile_to_ir(source).unwrap();
         assert_eq!(ir.steps.len(), 1);
-        assert_eq!(ir.steps[0].collector, "proc_windows");
+        let expected = if cfg!(target_os = "windows") { "proc_windows" } else { "proc_linux" };
+        assert_eq!(ir.steps[0].collector, expected);
     }
     
     #[test]
@@ -292,12 +294,12 @@ investigation "test" {
 }
 "#;
         
-        let target = crate::core::TargetSpec::live("localhost", "windows");
-        let policy = crate::core::ExecPolicy::default();
+        let target = jockey_core::TargetSpec::live("localhost", "windows");
+        let policy = jockey_core::ExecPolicy::default();
         
         let contract = compile_to_contract(source, target, policy).unwrap();
         
-        assert_eq!(contract.ir_id, "test"); // Will be updated to ULID in real impl
+        assert!(!contract.ir_id.is_empty());
         assert!(!contract.run_id.is_empty());
         assert_eq!(contract.target.os, "windows");
     }
@@ -305,7 +307,7 @@ investigation "test" {
     #[test]
     fn test_capability_inference() {
         use crate::typeck::infer_capabilities;
-        use crate::ast::{EvidenceType, Expression};
+        use crate::ast::EvidenceType;
         
         let caps = infer_capabilities(&EvidenceType::Process, &None);
         assert!(caps.contains(&crate::ast::Capability::ProcessEnumerate));
@@ -327,7 +329,7 @@ investigation "test" {
             operator: BinaryOp::Eq,
             right: Box::new(Expression::Literal(Literal::Integer(1234))),
             span: crate::span::Span::single(crate::span::Position::start()),
-        };
+        });
         
         assert!(has_pid_filter(&expr));
         
